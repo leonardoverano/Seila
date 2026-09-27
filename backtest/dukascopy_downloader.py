@@ -47,7 +47,7 @@ def _hour_url(symbol: str, day: dt.date, hour: int) -> str:
     return f"{BASE_URL}/{symbol.upper()}/{day.year:04d}/{day.month - 1:02d}/{day.day:02d}/{hour:02d}h_ticks.bi5"
 
 
-def _fetch_hour(symbol: str, day: dt.date, hour: int, retries: int = 10, base_delay: float = 2.0) -> bytes:
+def _fetch_hour(symbol: str, day: dt.date, hour: int, retries: int = 20, base_delay: float = 2.0) -> bytes:
     url = _hour_url(symbol, day, hour)
     for attempt in range(retries):
         try:
@@ -60,7 +60,7 @@ def _fetch_hour(symbol: str, day: dt.date, hour: int, retries: int = 10, base_de
             if exc.code == 404:
                 time.sleep(base_delay)
                 return b""
-            if exc.code == 429:
+            if exc.code in (429, 503, 502, 504):
                 wait = min(base_delay * (2**attempt), 60)
                 time.sleep(wait)
                 continue
@@ -68,9 +68,8 @@ def _fetch_hour(symbol: str, day: dt.date, hour: int, retries: int = 10, base_de
                 raise
             time.sleep(base_delay * (attempt + 1))
         except (urllib.error.URLError, TimeoutError, ConnectionError):
-            if attempt == retries - 1:
-                raise
-            time.sleep(base_delay * (attempt + 1))
+            wait = min(base_delay * (2**attempt), 60)
+            time.sleep(wait)
     return b""
 
 
@@ -113,11 +112,22 @@ def download_ticks(symbol: str, start: dt.date, end: dt.date, use_cache: bool = 
             continue
 
         day_frames = []
+        day_failed = False
         for hour in range(24):
-            raw = _fetch_hour(symbol, day, hour)
+            try:
+                raw = _fetch_hour(symbol, day, hour)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[dukascopy] falha persistente em {symbol} {day} {hour:02d}h: {exc} — pulando o dia")
+                day_failed = True
+                break
             df_hour = _decode_hour(raw, day, hour, point_value)
             if not df_hour.empty:
                 day_frames.append(df_hour)
+
+        if day_failed:
+            # não grava cache (dia incompleto): será retentado em uma próxima chamada
+            day += dt.timedelta(days=1)
+            continue
 
         day_df = (
             pd.concat(day_frames, ignore_index=True)
