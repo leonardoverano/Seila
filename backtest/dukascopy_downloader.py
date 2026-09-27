@@ -142,12 +142,17 @@ def download_ticks(symbol: str, start: dt.date, end: dt.date, use_cache: bool = 
 
 
 def ticks_to_ohlc(ticks: pd.DataFrame, timeframe: str) -> pd.DataFrame:
-    """Agrega ticks em candles OHLC. `timeframe` no formato pandas (ex.: '1s', '1min', '5min', '15min')."""
+    """Agrega ticks em candles OHLC. `timeframe` no formato pandas (ex.: '1s', '1min', '5min', '15min').
+
+    `volume` é o número de ticks no candle (proxy de atividade de mercado; a
+    Dukascopy não fornece volume real de contratos em ticks de Forex).
+    """
     if ticks.empty:
-        return pd.DataFrame(columns=["open", "high", "low", "close"])
-    series = ticks.set_index("timestamp")["mid"]
-    ohlc = series.resample(timeframe).ohlc()
-    ohlc = ohlc.dropna(how="all")
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    indexed = ticks.set_index("timestamp")
+    ohlc = indexed["mid"].resample(timeframe).ohlc()
+    ohlc["volume"] = indexed["mid"].resample(timeframe).count()
+    ohlc = ohlc.dropna(subset=["open", "high", "low", "close"], how="all")
     return ohlc
 
 
