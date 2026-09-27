@@ -133,11 +133,14 @@ def download_ticks(symbol: str, start: dt.date, end: dt.date, use_cache: bool = 
         return pd.DataFrame(columns=["timestamp", "bid", "ask", "mid"])
 
     ticks = pd.concat(frames, ignore_index=True)
+    ticks["timestamp"] = pd.to_datetime(ticks["timestamp"], utc=True)
+    ticks["bid"] = pd.to_numeric(ticks["bid"], errors="coerce")
+    ticks["ask"] = pd.to_numeric(ticks["ask"], errors="coerce")
     if ticks.empty:
-        ticks["mid"] = []
+        ticks["mid"] = pd.Series(dtype="float64")
         return ticks
     ticks["mid"] = (ticks["bid"] + ticks["ask"]) / 2
-    ticks = ticks.sort_values("timestamp").reset_index(drop=True)
+    ticks = ticks.dropna(subset=["mid"]).sort_values("timestamp").reset_index(drop=True)
     return ticks
 
 
