@@ -1,4 +1,0 @@
-__pycache__/
-*.pyc
-backtest/data_cache/*.pkl
-backtest_report.csv
